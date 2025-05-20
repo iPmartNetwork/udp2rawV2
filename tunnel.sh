@@ -154,7 +154,7 @@ configure_tunnel() {
 Description=UDP2RAW Server
 After=network.target
 [Service]
-ExecStart=$UDP2RAW_PATH -s -l $listenip:$lport -r 127.0.0.1:$fport -k "$pass" --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 -a
+ExecStart=$UDP2RAW_PATH -s -l $listenip:$lport -r 127.0.0.1:$fport -k "$pass" --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 8192 -a
 Restart=always
 [Install]
 WantedBy=multi-user.target
@@ -192,9 +192,9 @@ EOF
         case $proto in 1) raw_mode="udp";; 2) raw_mode="faketcp";; 3) raw_mode="icmp";; *) raw_mode="udp";; esac
 
         if [ "$remote_ip" = "IPv4" ]; then
-            execstr="$UDP2RAW_PATH -c -l 0.0.0.0:$lport -r $raddr:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 -a"
+            execstr="$UDP2RAW_PATH -c -l 0.0.0.0:$lport -r $raddr:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 8192 -a"
         else
-            execstr="$UDP2RAW_PATH -c -l [::]:$lport -r [$raddr]:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 -a"
+            execstr="$UDP2RAW_PATH -c -l [::]:$lport -r [$raddr]:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 8192 -a"
         fi
 
         cat << EOF > /etc/systemd/system/udp2raw-c.service
