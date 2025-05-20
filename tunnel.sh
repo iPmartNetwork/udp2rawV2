@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Advanced UDP2RAW Tunnel Manager | Author: iPmartNetwork | ver: ProPlus 2025
+# UDP2RAW Professional Tunnel Manager - iPmartNetwork 2025
 
 CYAN="\e[96m"
 GREEN="\e[92m"
@@ -9,29 +9,76 @@ RED="\e[91m"
 MAGENTA="\e[95m"
 NC="\e[0m"
 
+UDP2RAW_DIR="/usr/local/bin"
+UDP2RAW_PATH="$UDP2RAW_DIR/udp2raw"
 UDP2RAW_URL_BASE="https://github.com/iPmartNetwork/UDPRAW-V2/releases/latest/download"
-UDP2RAW_PATH="/usr/local/bin/udp2raw"
-ARCH=$(uname -m)
-
-# Get the latest release file based on architecture
-get_udp2raw_download_url() {
-    case "$ARCH" in
-        x86_64|amd64)   echo "$UDP2RAW_URL_BASE/udp2raw_amd64" ;;
-        armv7*)         echo "$UDP2RAW_URL_BASE/udp2raw_arm" ;;
-        arm64|aarch64)  echo "$UDP2RAW_URL_BASE/udp2raw_arm64" ;;
-        mips*)          echo "$UDP2RAW_URL_BASE/udp2raw_mips" ;;
-        *) echo ""; return 1 ;;
-    esac
-}
 
 press_enter() {
     echo -e "\n${MAGENTA}Press Enter to continue... ${NC}"
     read
 }
 
+detect_arch() {
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64|amd64)   BIN="udp2raw_amd64";;
+        armv7*|armv6*)  BIN="udp2raw_arm";;
+        arm64|aarch64)  BIN="udp2raw_arm64";;
+        mips*)          BIN="udp2raw_mips";;
+        *) echo -e "${RED}Unsupported architecture: $ARCH${NC}"; exit 1;;
+    esac
+}
+
+network_optimization() {
+    echo -e "${YELLOW}Applying network optimizations...${NC}"
+    modprobe tcp_bbr 2>/dev/null
+    echo "tcp_bbr" | tee /etc/modules-load.d/bbr.conf >/dev/null
+    cat << EOF >> /etc/sysctl.conf
+
+# Optimized for UDP2RAW
+net.core.rmem_max=67108864
+net.core.wmem_max=67108864
+net.ipv4.tcp_rmem=4096 87380 67108864
+net.ipv4.tcp_wmem=4096 65536 67108864
+net.ipv4.tcp_congestion_control=bbr
+net.core.netdev_max_backlog=250000
+net.core.somaxconn=4096
+EOF
+    sysctl -p >/dev/null 2>&1
+    ulimit -n 1048576
+    echo -e "${GREEN}Network optimization applied.${NC}"
+    sleep 1
+}
+
+install_udp2raw() {
+    clear
+    detect_arch
+    echo -e "${YELLOW}Installing dependencies & udp2raw for [$ARCH]...${NC}"
+    apt-get update -y >/dev/null
+    apt-get install curl wget -y >/dev/null
+    display_fancy_progress 12
+
+    mkdir -p $UDP2RAW_DIR
+    URL="$UDP2RAW_URL_BASE/$BIN"
+    if ! curl -L --retry 3 -o "$UDP2RAW_PATH" "$URL"; then
+        echo -e "${RED}Download failed. Check your internet or proxy.${NC}"
+        return 1
+    fi
+    chmod +x "$UDP2RAW_PATH"
+
+    # فایل را بررسی کن!
+    if ! file "$UDP2RAW_PATH" | grep -qi "executable"; then
+        echo -e "${RED}Downloaded file is not a valid executable!${NC}"
+        rm -f "$UDP2RAW_PATH"
+        return 1
+    fi
+    echo -e "${GREEN}udp2raw installed successfully for [$ARCH].${NC}"
+    network_optimization
+}
+
 display_fancy_progress() {
     local duration=$1
-    local sleep_interval=0.07
+    local sleep_interval=0.08
     local progress=0
     local bar_length=40
     while [ $progress -lt $duration ]; do
@@ -48,53 +95,6 @@ display_fancy_progress() {
         sleep $sleep_interval
     done
     echo
-}
-
-if [ "$EUID" -ne 0 ]; then
-    echo -e "\n ${RED}Run as root.${NC}"
-    exit 1
-fi
-
-network_optimization() {
-    echo -e "${YELLOW}Applying Network Optimizations for Low Latency & Jitter...${NC}"
-    sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1
-    cat << EOF >> /etc/sysctl.conf
-
-# Optimized for UDP2RAW
-net.core.rmem_max=67108864
-net.core.wmem_max=67108864
-net.ipv4.tcp_rmem=4096 87380 67108864
-net.ipv4.tcp_wmem=4096 65536 67108864
-net.core.netdev_max_backlog=250000
-net.core.somaxconn=4096
-EOF
-    sysctl -p >/dev/null 2>&1
-    ulimit -n 1048576
-    echo -e "${GREEN}Network optimization applied.${NC}"
-    sleep 1
-}
-
-install_udp2raw() {
-    clear
-    echo -e "${YELLOW}Installing dependencies & UDP2RAW binary for ${ARCH}...${NC}"
-    apt-get update -y >/dev/null
-    apt-get install curl wget -y >/dev/null
-    display_fancy_progress 12
-
-    local url=$(get_udp2raw_download_url)
-    if [ -z "$url" ]; then
-        echo -e "${RED}Unsupported CPU Architecture: $ARCH${NC}"
-        return 1
-    fi
-
-    rm -f $UDP2RAW_PATH
-    if ! curl -L --retry 3 -o "$UDP2RAW_PATH" "$url"; then
-        echo -e "${RED}Download failed. Check internet.${NC}"
-        return 1
-    fi
-    chmod +x $UDP2RAW_PATH
-    echo -e "${GREEN}UDP2RAW installed successfully.${NC}"
-    network_optimization
 }
 
 validate_port() {
@@ -225,9 +225,9 @@ show_logs() {
 }
 
 uninstall_udp2raw() {
-    echo -e "${RED}Uninstalling UDP2RAW & Cleaning up...${NC}"
-    systemctl stop udp2raw-s.service udp2raw-c.service
-    systemctl disable udp2raw-s.service udp2raw-c.service
+    echo -e "${RED}Uninstalling UDP2RAW & cleaning up...${NC}"
+    systemctl stop udp2raw-s.service udp2raw-c.service 2>/dev/null
+    systemctl disable udp2raw-s.service udp2raw-c.service 2>/dev/null
     rm -f /etc/systemd/system/udp2raw-*.service $UDP2RAW_PATH
     systemctl daemon-reload
     echo -e "${GREEN}Uninstalled.${NC}"
@@ -237,11 +237,11 @@ main_menu() {
     while true; do
         show_status_panel
         echo -e "${MAGENTA}=========== UDP2RAW Tunnel Pro Menu ===========${NC}"
-        echo -e "${YELLOW}1) Install / Update UDP2RAW"
+        echo -e "${YELLOW}1) Install / Update udp2raw"
         echo -e "2) Configure Tunnel"
         echo -e "3) Show Tunnel Logs"
         echo -e "4) Network Optimization"
-        echo -e "5) Uninstall UDP2RAW"
+        echo -e "5) Uninstall udp2raw"
         echo -e "0) Exit${NC}\n"
         read -p "$(echo -e "${GREEN}Choose an option [0-5]: ${NC}")" ch
         case $ch in
@@ -256,5 +256,11 @@ main_menu() {
         press_enter
     done
 }
+
+# Start
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Run this script as root.${NC}"
+    exit 1
+fi
 
 main_menu
