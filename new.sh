@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# --- Color Codes ---
 CYAN="\e[96m"
 GREEN="\e[92m"
 YELLOW="\e[93m"
@@ -7,16 +8,18 @@ RED="\e[91m"
 MAGENTA="\e[95m"
 NC="\e[0m"
 
+# --- Paths and URLs ---
 UDP2RAW_DIR="/usr/local/bin"
 UDP2RAW_PATH="$UDP2RAW_DIR/udp2raw"
 UDP2RAW_URL_BASE="https://github.com/iPmartNetwork/udp2rawV2/releases/latest/download"
-BACKUP_ROOT="/root/udp2raw_backups"
 
+# --- Press Enter ---
 press_enter() {
     echo -e "\n${MAGENTA}Press Enter to continue... ${NC}"
     read
 }
 
+# --- Detect Architecture ---
 detect_arch() {
     ARCH=$(uname -m)
     case "$ARCH" in
@@ -28,6 +31,7 @@ detect_arch() {
     esac
 }
 
+# --- Fancy Progress Bar ---
 display_fancy_progress() {
     local duration=$1
     local sleep_interval=0.08
@@ -49,8 +53,19 @@ display_fancy_progress() {
     echo
 }
 
+# --- GeoIP Info ---
+show_geo_status() {
+    ipinfo=$(curl -s ipinfo.io 2>/dev/null)
+    IP=$(echo "$ipinfo" | grep -oP '"ip": *"\K[^"]+')
+    CITY=$(echo "$ipinfo" | grep -oP '"city": *"\K[^"]+')
+    COUNTRY=$(echo "$ipinfo" | grep -oP '"country": *"\K[^"]+')
+    echo -e "${MAGENTA}Server IP: $IP"
+    echo -e "Location: $CITY, $COUNTRY${NC}"
+}
+
+# --- Network Optimization ---
 network_optimization() {
-    echo -e "${YELLOW}Applying network optimizations...${NC}"
+    echo -e "${YELLOW}Applying standard network optimizations...${NC}"
     modprobe tcp_bbr 2>/dev/null
     echo "tcp_bbr" | tee /etc/modules-load.d/bbr.conf >/dev/null
     cat << EOF >> /etc/sysctl.conf
@@ -70,6 +85,30 @@ EOF
     sleep 1
 }
 
+# --- Advanced Speed Optimization ---
+advanced_speed_optimization() {
+    echo -e "${YELLOW}Applying maximum speed optimizations...${NC}"
+    cat << EOF >> /etc/sysctl.conf
+
+# Max UDP2RAW Performance
+net.core.rmem_default=26214400
+net.core.rmem_max=67108864
+net.core.wmem_default=26214400
+net.core.wmem_max=67108864
+net.core.netdev_max_backlog=250000
+net.ipv4.udp_rmem_min=16384
+net.ipv4.udp_wmem_min=16384
+net.ipv4.tcp_rmem=4096 87380 67108864
+net.ipv4.tcp_wmem=4096 65536 67108864
+net.ipv4.tcp_congestion_control=bbr
+EOF
+    sysctl -p >/dev/null 2>&1
+    ulimit -n 1048576
+    echo -e "${GREEN}Advanced speed optimization applied.${NC}"
+    sleep 1
+}
+
+# --- Install / Update udp2raw ---
 install_udp2raw() {
     clear
     detect_arch
@@ -94,16 +133,64 @@ install_udp2raw() {
     network_optimization
 }
 
+# --- Auto-update Binary ---
+auto_update_udp2raw() {
+    detect_arch
+    URL="$UDP2RAW_URL_BASE/$BIN"
+    TMP_FILE="/tmp/udp2raw_check"
+    if ! curl -sL --retry 3 -o "$TMP_FILE" "$URL"; then
+        echo -e "${RED}Cannot fetch latest udp2raw binary.${NC}"
+        return 1
+    fi
+    if cmp -s "$TMP_FILE" "$UDP2RAW_PATH"; then
+        echo -e "${YELLOW}udp2raw is already up to date.${NC}"
+        rm -f "$TMP_FILE"
+    else
+        mv "$TMP_FILE" "$UDP2RAW_PATH"
+        chmod +x "$UDP2RAW_PATH"
+        echo -e "${GREEN}udp2raw updated to the latest version.${NC}"
+        systemctl restart udp2raw-s.service 2>/dev/null
+        systemctl restart udp2raw-c.service 2>/dev/null
+    fi
+}
+
+# --- Backup Settings & Binary ---
+backup_udp2raw() {
+    BKP_DIR="/root/udp2raw_backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$BKP_DIR"
+    [ -f $UDP2RAW_PATH ] && cp $UDP2RAW_PATH "$BKP_DIR/"
+    [ -f /etc/systemd/system/udp2raw-s.service ] && cp /etc/systemd/system/udp2raw-s.service "$BKP_DIR/"
+    [ -f /etc/systemd/system/udp2raw-c.service ] && cp /etc/systemd/system/udp2raw-c.service "$BKP_DIR/"
+    tar czf "$BKP_DIR.tar.gz" -C "$BKP_DIR" .
+    rm -rf "$BKP_DIR"
+    echo -e "${GREEN}Backup created: $BKP_DIR.tar.gz${NC}"
+}
+
+# --- Restore Settings & Binary ---
+restore_udp2raw() {
+    read -p "Enter backup archive path (*.tar.gz): " bkfile
+    if [ ! -f "$bkfile" ]; then
+        echo -e "${RED}Backup file not found!${NC}"; return 1
+    fi
+    tar xf "$bkfile" -C /
+    systemctl daemon-reload
+    systemctl enable --now udp2raw-s.service 2>/dev/null
+    systemctl enable --now udp2raw-c.service 2>/dev/null
+    echo -e "${GREEN}Restore complete!${NC}"
+}
+
+# --- Validate Port ---
 validate_port() {
     local port="$1"
     [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
 }
 
+# --- Show Status Panel ---
 show_status_panel() {
     clear
     echo -e "${CYAN}--------- [ UDP2RAW Status Panel ] ----------${NC}"
-    for svc in $(systemctl list-units --type=service | grep udp2raw | awk '{print $1}'); do
-        if systemctl is-active --quiet $svc; then
+    for svc in udp2raw-s udp2raw-c; do
+        if systemctl is-active --quiet $svc.service; then
             echo -e "${GREEN}[$svc] is running ✅${NC}"
         else
             echo -e "${RED}[$svc] is stopped ❌${NC}"
@@ -112,6 +199,7 @@ show_status_panel() {
     echo -e "${CYAN}---------------------------------------------${NC}\n"
 }
 
+# --- Test Ping Jitter ---
 test_ping_jitter() {
     local target=$1
     echo -e "${MAGENTA}Testing latency and jitter to $target ...${NC}"
@@ -122,6 +210,7 @@ test_ping_jitter() {
     fi
 }
 
+# --- Configure Tunnel ---
 configure_tunnel() {
     local mode role
     clear
@@ -129,7 +218,7 @@ configure_tunnel() {
     read -p "Enter [1/2]: " role
     if [ "$role" = "1" ]; then
         mode="-s"
-        echo -e "${YELLOW}Choose listen IP mode:$${NC} [1] IPv4 [2] IPv6"
+        echo -e "${YELLOW}Choose listen IP mode:${NC} [1] IPv4 (0.0.0.0)  [2] IPv6 ([::])"
         read -p "Your choice: " ipmode
         [ "$ipmode" = "2" ] && listenip="[::]" || listenip="0.0.0.0"
         read -p "Local Listen Port [default: 443]: " lport; lport=${lport:-443}
@@ -216,147 +305,39 @@ EOF
     fi
 }
 
-### --- Multi-tunnel support ---
-create_multi_tunnel() {
-    read -p "Tunnel Name (no space): " TUN_NAME
-    read -p "Server[1] or Client[2]? " ROLE
-    if [ "$ROLE" = "1" ]; then
-        read -p "Local Listen Port: " LPORT
-        read -p "Forward to local WireGuard port: " FPORT
-        read -p "Password: " PASS
-        read -p "Raw Mode [udp/faketcp/icmp]: " RAW_MODE
-        cat << EOF > /etc/systemd/system/udp2raw-s-${TUN_NAME}.service
-[Unit]
-Description=UDP2RAW Server $TUN_NAME
-After=network.target
-[Service]
-ExecStart=$UDP2RAW_PATH -s -l 0.0.0.0:${LPORT} -r 127.0.0.1:${FPORT} -k "$PASS" --raw-mode $RAW_MODE --fix-gro --cipher-mode xor --sock-buf 8192 -a
-Restart=always
-[Install]
-WantedBy=multi-user.target
-EOF
-        systemctl daemon-reload
-        systemctl enable --now udp2raw-s-${TUN_NAME}.service
-        echo -e "${GREEN}Tunnel $TUN_NAME started as Server.${NC}"
-    else
-        read -p "Local Listen Port: " LPORT
-        read -p "Remote IP: " RADDR
-        read -p "Remote Port: " RPORT
-        read -p "Password: " PASS
-        read -p "Raw Mode [udp/faketcp/icmp]: " RAW_MODE
-        cat << EOF > /etc/systemd/system/udp2raw-c-${TUN_NAME}.service
-[Unit]
-Description=UDP2RAW Client $TUN_NAME
-After=network.target
-[Service]
-ExecStart=$UDP2RAW_PATH -c -l 0.0.0.0:${LPORT} -r ${RADDR}:${RPORT} -k "$PASS" --raw-mode $RAW_MODE --fix-gro --cipher-mode xor --sock-buf 8192 -a
-Restart=always
-[Install]
-WantedBy=multi-user.target
-EOF
-        systemctl daemon-reload
-        systemctl enable --now udp2raw-c-${TUN_NAME}.service
-        echo -e "${GREEN}Tunnel $TUN_NAME started as Client.${NC}"
-    fi
-}
-
-list_tunnels() {
-    echo -e "${CYAN}Active udp2raw tunnels:${NC}"
-    systemctl list-units --type=service | grep udp2raw | awk '{print $1}' | sed 's/\.service//'
-}
-
-remove_multi_tunnel() {
-    read -p "Tunnel Name to remove: " TUN_NAME
-    for typ in s c; do
-        if [ -f /etc/systemd/system/udp2raw-${typ}-${TUN_NAME}.service ]; then
-            systemctl stop udp2raw-${typ}-${TUN_NAME}.service
-            systemctl disable udp2raw-${typ}-${TUN_NAME}.service
-            rm -f /etc/systemd/system/udp2raw-${typ}-${TUN_NAME}.service
-        fi
-    done
-    systemctl daemon-reload
-    echo -e "${GREEN}Tunnel $TUN_NAME removed (if existed).${NC}"
-}
-
-### --- Backup/Restore ---
-backup_udp2raw() {
-    mkdir -p "$BACKUP_ROOT"
-    TS=$(date +%Y%m%d_%H%M%S)
-    BACKUP_DIR="$BACKUP_ROOT/udp2raw_backup_$TS"
-    mkdir -p "$BACKUP_DIR"
-    cp /usr/local/bin/udp2raw "$BACKUP_DIR/" 2>/dev/null
-    cp /etc/systemd/system/udp2raw*.service "$BACKUP_DIR/" 2>/dev/null
-    cp /etc/sysctl.conf "$BACKUP_DIR/" 2>/dev/null
-    tar -czf "${BACKUP_DIR}.tar.gz" -C "$BACKUP_DIR" .
-    rm -rf "$BACKUP_DIR"
-    echo -e "${GREEN}Backup created at ${BACKUP_DIR}.tar.gz${NC}"
-}
-
-restore_udp2raw() {
-    read -p "Enter backup file path: " BACKUP_TAR
-    if [ -f "$BACKUP_TAR" ]; then
-        tar -xzf "$BACKUP_TAR" -C /
-        systemctl daemon-reload
-        echo -e "${GREEN}Backup restored.${NC}"
-    else
-        echo -e "${RED}Backup file not found!${NC}"
-    fi
-}
-
-### --- Update Binary ---
-update_udp2raw_binary() {
-    detect_arch
-    URL="$UDP2RAW_URL_BASE/$BIN"
-    TMP_PATH="/tmp/udp2raw_new"
-    if curl -Ls --retry 3 -o "$TMP_PATH" "$URL"; then
-        chmod +x "$TMP_PATH"
-        if file "$TMP_PATH" | grep -qi "executable"; then
-            mv "$TMP_PATH" "$UDP2RAW_PATH"
-            echo -e "${GREEN}udp2raw binary updated successfully!${NC}"
-            systemctl restart $(systemctl list-units --type=service | grep udp2raw | awk '{print $1}')
-        else
-            echo -e "${RED}Downloaded file is not executable!${NC}"
-        fi
-    else
-        echo -e "${RED}Download failed.${NC}"
-    fi
-}
-
+# --- Show Tunnel Logs ---
 show_logs() {
     echo -e "${YELLOW}UDP2RAW Service Logs:${NC}\n"
-    journalctl -u 'udp2raw*.service' --no-pager --since "10 min ago" | tail -50
+    journalctl -u udp2raw-s.service -u udp2raw-c.service --no-pager --since "10 min ago" | tail -50
 }
 
+# --- Uninstall udp2raw & Clean ---
 uninstall_udp2raw() {
     echo -e "${RED}Uninstalling UDP2RAW & cleaning up...${NC}"
-    for f in /etc/systemd/system/udp2raw*.service; do
-        svc=$(basename "$f")
-        systemctl stop "$svc" 2>/dev/null
-        systemctl disable "$svc" 2>/dev/null
-        rm -f "$f"
-    done
-    rm -f $UDP2RAW_PATH
+    systemctl stop udp2raw-s.service udp2raw-c.service 2>/dev/null
+    systemctl disable udp2raw-s.service udp2raw-c.service 2>/dev/null
+    rm -f /etc/systemd/system/udp2raw-*.service $UDP2RAW_PATH
     systemctl daemon-reload
     echo -e "${GREEN}Uninstalled.${NC}"
 }
 
+# --- Main Menu ---
 main_menu() {
     while true; do
         show_status_panel
+        show_geo_status
         echo -e "${MAGENTA}=========== UDP2RAW Tunnel Pro Menu ===========${NC}"
         echo -e "${YELLOW}1) Install / Update udp2raw"
-        echo -e "2) Configure Tunnel (Main)"
+        echo -e "2) Configure Tunnel"
         echo -e "3) Show Tunnel Logs"
         echo -e "4) Network Optimization"
         echo -e "5) Uninstall udp2raw"
-        echo -e "6) Backup Config & Services"
-        echo -e "7) Restore Config & Services"
-        echo -e "8) Create New Tunnel (Multi)"
-        echo -e "9) Remove Tunnel"
-        echo -e "10) List Tunnels"
-        echo -e "11) Update udp2raw Binary"
+        echo -e "6) Backup Settings"
+        echo -e "7) Restore Settings"
+        echo -e "8) Auto-Update Binary"
+        echo -e "9) Advanced Speed Optimization"
         echo -e "0) Exit${NC}\n"
-        read -p "$(echo -e "${GREEN}Choose an option [0-11]: ${NC}")" ch
+        read -p "$(echo -e "${GREEN}Choose an option [0-9]: ${NC}")" ch
         case $ch in
             1) install_udp2raw;;
             2) configure_tunnel;;
@@ -365,10 +346,8 @@ main_menu() {
             5) uninstall_udp2raw;;
             6) backup_udp2raw;;
             7) restore_udp2raw;;
-            8) create_multi_tunnel;;
-            9) remove_multi_tunnel;;
-            10) list_tunnels;;
-            11) update_udp2raw_binary;;
+            8) auto_update_udp2raw;;
+            9) advanced_speed_optimization;;
             0) echo -e "${CYAN}Bye.${NC}"; exit 0;;
             *) echo -e "${RED}Invalid.${NC}";;
         esac
@@ -376,7 +355,7 @@ main_menu() {
     done
 }
 
-# Start
+# --- Run as Root ---
 if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Run this script as root.${NC}"
     exit 1
