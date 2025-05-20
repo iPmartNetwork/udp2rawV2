@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# UDP2RAW Professional Tunnel Manager - iPmartNetwork 2025
-
 CYAN="\e[96m"
 GREEN="\e[92m"
 YELLOW="\e[93m"
@@ -11,7 +9,7 @@ NC="\e[0m"
 
 UDP2RAW_DIR="/usr/local/bin"
 UDP2RAW_PATH="$UDP2RAW_DIR/udp2raw"
-UDP2RAW_URL_BASE="https://github.com/iPmartNetwork/UDPRAW-V2/releases/latest/download"
+UDP2RAW_URL_BASE="https://github.com/iPmartNetwork/udp2rawV2/releases/latest/download"
 
 press_enter() {
     echo -e "\n${MAGENTA}Press Enter to continue... ${NC}"
@@ -27,6 +25,27 @@ detect_arch() {
         mips*)          BIN="udp2raw_mips";;
         *) echo -e "${RED}Unsupported architecture: $ARCH${NC}"; exit 1;;
     esac
+}
+
+display_fancy_progress() {
+    local duration=$1
+    local sleep_interval=0.08
+    local progress=0
+    local bar_length=40
+    while [ $progress -lt $duration ]; do
+        printf "\r${CYAN} ["
+        for ((i = 0; i < bar_length; i++)); do
+            if [ $i -lt $((progress * bar_length / duration)) ]; then
+                printf "${GREEN}█${CYAN}"
+            else
+                printf "░"
+            fi
+        done
+        printf "] ${YELLOW}%d%%${NC}" $((progress*100/duration))
+        progress=$((progress + 1))
+        sleep $sleep_interval
+    done
+    echo
 }
 
 network_optimization() {
@@ -56,7 +75,7 @@ install_udp2raw() {
     echo -e "${YELLOW}Installing dependencies & udp2raw for [$ARCH]...${NC}"
     apt-get update -y >/dev/null
     apt-get install curl wget -y >/dev/null
-    display_fancy_progress 12
+    display_fancy_progress 10
 
     mkdir -p $UDP2RAW_DIR
     URL="$UDP2RAW_URL_BASE/$BIN"
@@ -65,8 +84,7 @@ install_udp2raw() {
         return 1
     fi
     chmod +x "$UDP2RAW_PATH"
-
-    # فایل را بررسی کن!
+    # چک کردن اجرایی بودن فایل
     if ! file "$UDP2RAW_PATH" | grep -qi "executable"; then
         echo -e "${RED}Downloaded file is not a valid executable!${NC}"
         rm -f "$UDP2RAW_PATH"
@@ -74,27 +92,6 @@ install_udp2raw() {
     fi
     echo -e "${GREEN}udp2raw installed successfully for [$ARCH].${NC}"
     network_optimization
-}
-
-display_fancy_progress() {
-    local duration=$1
-    local sleep_interval=0.08
-    local progress=0
-    local bar_length=40
-    while [ $progress -lt $duration ]; do
-        printf "\r${CYAN} ["
-        for ((i = 0; i < bar_length; i++)); do
-            if [ $i -lt $((progress * bar_length / duration)) ]; then
-                printf "${GREEN}█${CYAN}"
-            else
-                printf "░"
-            fi
-        done
-        printf "] ${YELLOW}%d%%${NC}" $((progress*100/duration))
-        progress=$((progress + 1))
-        sleep $sleep_interval
-    done
-    echo
 }
 
 validate_port() {
