@@ -84,7 +84,6 @@ install_udp2raw() {
         return 1
     fi
     chmod +x "$UDP2RAW_PATH"
-    # چک کردن اجرایی بودن فایل
     if ! file "$UDP2RAW_PATH" | grep -qi "executable"; then
         echo -e "${RED}Downloaded file is not a valid executable!${NC}"
         rm -f "$UDP2RAW_PATH"
@@ -155,7 +154,7 @@ configure_tunnel() {
 Description=UDP2RAW Server
 After=network.target
 [Service]
-ExecStart=$UDP2RAW_PATH -s -l $listenip:$lport -r 127.0.0.1:$fport -k "$pass" --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 --mtu 1500 -a
+ExecStart=$UDP2RAW_PATH -s -l $listenip:$lport -r 127.0.0.1:$fport -k "$pass" --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 -a
 Restart=always
 [Install]
 WantedBy=multi-user.target
@@ -193,9 +192,9 @@ EOF
         case $proto in 1) raw_mode="udp";; 2) raw_mode="faketcp";; 3) raw_mode="icmp";; *) raw_mode="udp";; esac
 
         if [ "$remote_ip" = "IPv4" ]; then
-            execstr="$UDP2RAW_PATH -c -l 0.0.0.0:$lport -r $raddr:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 --mtu 1500 -a"
+            execstr="$UDP2RAW_PATH -c -l 0.0.0.0:$lport -r $raddr:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 -a"
         else
-            execstr="$UDP2RAW_PATH -c -l [::]:$lport -r [$raddr]:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 --mtu 1500 -a"
+            execstr="$UDP2RAW_PATH -c -l [::]:$lport -r [$raddr]:$rport -k $pass --raw-mode $raw_mode --fix-gro --cipher-mode xor --sock-buf 4096000 -a"
         fi
 
         cat << EOF > /etc/systemd/system/udp2raw-c.service
